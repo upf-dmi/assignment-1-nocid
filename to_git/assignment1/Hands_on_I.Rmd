@@ -1,0 +1,2762 @@
+---
+title: "DMI. Assignment 1"
+author: "Daniel Guiñón Fort & Romain Pastre"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"      
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    
+    fig_caption: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, results = "hide")
+knitr::opts_knit$set(root.dir = "./data")
+```
+
+# 1. Analysis of the Heart Disease Dataset
+
+Load the data from [here](https://raw.githubusercontent.com/jpinero/DMI_2021/main/datasets/heart_disease_dataset.csv), and the description is [here](https://raw.githubusercontent.com/jpinero/DMI_2021/main/datasets/heart_disease_description.txt). The original dataset comes from [here](https://archive.ics.uci.edu/ml/datasets/Heart+Disease) and corresponds to the [processed cleveland data](https://archive.ics.uci.edu/ml/machine-learning-databases/heart-disease/processed.cleveland.data)
+
+## **Perform an EDA on the dataset**
+
+**(Create visualizations in order to show which variables seem to be more associated with heart disease)**
+
+```{r, libraries}
+
+pac <- c("tidyverse",
+         "writexl",
+         "readxl",
+         "ggplot2",
+         "VIM",
+         "mice",
+         "outliers",
+         "ggcorrplot",
+         "RColorBrewer",
+         "ggfortify",
+         "cluster",
+         "ggpubr",
+         "survival",
+         "readxl",
+         "pdftools",
+         "gridExtra",
+         "grid",
+         "gtable",
+         "pheatmap",
+         "circlize",
+         "ComplexHeatmap",
+         "xfun"
+)
+
+
+toinstall <- pac[!pac %in% installed.packages()]
+if(length(toinstall) > 0) install.packages(toinstall)
+l <- lapply(pac, require, character.only=TRUE)
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("ComplexHeatmap")
+require("ComplexHeatmap")
+
+# require(ComplexHeatmap)
+
+```
+
+```{r, data}
+
+# setwd(r'(C:\Users\okuti\OneDrive\Escritorio\docs\daniel\AAmaster_2\subjects\DMI_Data_Minning_in_Biomedicine\assignment1_danielguinon\)')
+
+hdd <- read.csv('heart_disease_dataset.csv', sep = ' ')
+
+```
+
+# Cleveland Dataset Exploratory Analysis
+
+This dataset contains information collected from **303 patients** (**97 Females** and **206 Males**) from the 80's Cleveland Clinic Foundation study. Individuals were suspected of having heart disease and were referred for testing. The **14 variables** selected were:
+
+1.  *(age) age in years*
+2.  *(sex) (1 = male; 0 = female)*
+3.  *(cp) chest pain type*
+    -   *Value 1: typical angina*
+    -   *Value 2: atypical angina*
+    -   *Value 3: non-anginal pain*
+    -   *Value 4: asymptomatic*
+4.  *(trestbps) resting blood pressure (in mm Hg on admission to the hospital)*
+5.  *(chol) serum cholestoral in mg/dl*
+6.  *(fbs) (fasting blood sugar \> 120 mg/dl) (1 = true; 0 = false)*
+7.  *(restecg) resting electrocardiographic results*
+    -   *Value 0: normal*
+    -   *Value 1: having ST-T wave abnormality (T wave inversions and/or ST elevation or depression of \> 0.05 mV)*
+    -   *Value 2: showing probable or definite left ventricular hypertrophy by Estes' criteria*
+8.  *(thalach) maximum heart rate achieved*
+9.  *(exang) exercise induced angina (1 = yes; 0 = no)*
+10. *(oldpeak) ST depression induced by exercise relative to rest*
+11. *(slope) the slope of the peak exercise ST segment*
+    -   *Value 1: upsloping*
+    -   *Value 2: flat*
+    -   *Value 3: downsloping*
+12. *(ca) number of major vessels (0-3) colored by flourosopy*
+13. *(thal) 3 = normal; 6 = fixed defect; 7 = reversable defect*
+14. *(num) (the predicted attribute)*
+
+We can already begin to suspect of potential biases in the data, which need to be taken into account when interpreting the results of the exploratory analysis (this report will not contain any statistical tests, except when assessing the outliers).
+
+-   **Potential selection bias:** Since this is a sample of suspected unhealthy individuals, healthy profiles are going to be underrepresented, making it harder to distinguish between true negatives and true mild cases. This also limits the scope of a potential predictive model.
+
+-   **Potential gender bias:** Since we are talking about the 80's, and since males are generally at higher risk of heart disease, this might have introduced a strong bias against female patterns of heart disease. We already see an undersampling of females, and an absence of female-related variables which are known to modify risk profiles (such as hormonal factors, menopause, etc.), which could lead the models to overfit to male patterns.
+
+-   **Unaccounted variables:** At the time, less was known about heart disease, and it is almost certain that some variables which today are known confounders or contributors to heart disease weren't measured.
+
+```{r, EDA}
+
+
+# Cleveland dataset only
+# 14 attributes only
+# 7. Attribute Information:
+#    -- Only 14 used
+#       -- 1. #3  (age)   age in years    
+#       -- 2. #4  (sex)   (1 = male; 0 = female)
+#       -- 3. #9  (cp)    chest pain type
+        # -- Value 1: typical angina
+        # -- Value 2: atypical angina
+        # -- Value 3: non-anginal pain
+        # -- Value 4: asymptomatic    
+#       -- 4. #10 (trestbps)  resting blood pressure (in mm Hg on admission to the 
+        # hospital)
+#       -- 5. #12 (chol)  serum cholestoral in mg/dl    
+#       -- 6. #16 (fbs)   (fasting blood sugar > 120 mg/dl)  (1 = true; 0 = false)    
+#       -- 7. #19 (restecg)  resting electrocardiographic results
+        # -- Value 0: normal
+        # -- Value 1: having ST-T wave abnormality (T wave inversions and/or ST 
+        #             elevation or depression of > 0.05 mV)
+        # -- Value 2: showing probable or definite left ventricular hypertrophy
+        #             by Estes' criteria 
+#       -- 8. #32 (thalach) maximum heart rate achieved  
+#       -- 9. #38 (exang)     exercise induced angina (1 = yes; 0 = no)
+#       -- 10. #40 (oldpeak)   ST depression induced by exercise relative to rest
+#       -- 11. #41 (slope)     the slope of the peak exercise ST segment
+        # -- Value 1: upsloping
+        # -- Value 2: flat
+        # -- Value 3: downsloping
+#       -- 12. #44 (ca)     number of major vessels (0-3) colored by flourosopy   
+#       -- 13. #51 (thal)      3 = normal; 6 = fixed defect; 7 = reversable defect
+#       -- 14. #58 (num)       (the predicted attribute)
+
+```
+
+## Initial checks
+
+-   Checking data is not ordered in some arbitrary way (just unnecessary, but always look for data leaks...)
+
+```{r}
+
+# Variable recategorization
+
+hdd$target <- factor(ifelse(hdd$num == 0, "Non-Disease", "Disease"),
+                              levels = c("Non-Disease", "Disease"))
+
+hdd$sex <- factor(hdd$sex, labels = c("Female", "Male"))
+
+ggplot(hdd, aes(x = patient_id, y = age, color = target)) +
+  scale_color_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D")) +
+  geom_point() +
+  labs(title = "Disease status by Id",
+       x = "Id",
+       y = "count") +
+  theme_minimal() +
+   theme(
+    plot.title = element_text(size = 14, hjust = 0.5), 
+    axis.title = element_text(size = 12),             
+    axis.text = element_text(size = 10),  
+    legend.position = "top",          
+    legend.title = element_blank(),
+    panel.grid.major.x = element_blank(),
+  ) 
+
+```
+
+-   Checking missing data (NA's)
+
+```{r}
+
+hdd[hdd == "?"] <- NA
+
+# aggr(hdd, numbers = TRUE, sortVars = TRUE, prop = FALSE, cex.axis = 0.7)
+# 
+# marginplot(hdd[, c("ca", "target")], col = c("blue", "red"), pch = 19)
+# marginplot(hdd[, c("thal", "target")], col = c("blue", "red"), pch = 19)
+
+hdd_na <- hdd %>% select(-c(num, patient_id))
+
+matrixplot(hdd_na, sortby = "target")
+# matrixplot(hdd, sortby = "age")
+# matrixplot(hdd, sortby = "sex")
+
+```
+
+This plot shows the distribution of NA's (in red) in relation to the target, and there seems to be no pattern of ordering nor of missingness. Could be MCAR, but we should assume MAR to be cautious. Imputation doesn't seem all that necessary or justified here, but since it is not MNAR, and since there are so few of them, we could impute without too much risk of biasing the data. NA imputation by class values according to their proportion is performed.
+
+```{r}
+
+set.seed(314)
+thal_proportions <- prop.table(table(hdd$thal))
+ca_proportions <- prop.table(table(hdd$ca))
+
+thal_missing_indices <- which(is.na(hdd$thal))
+ca_missing_indices <- which(is.na(hdd$ca))
+
+thal_imputed_values <- sample(names(thal_proportions), length(thal_missing_indices), 
+                         replace = TRUE, prob = thal_proportions)
+ca_imputed_values <- sample(names(ca_proportions), length(ca_missing_indices), 
+                         replace = TRUE, prob = ca_proportions)
+
+hdd$thal[thal_missing_indices] <- thal_imputed_values
+hdd$ca[ca_missing_indices] <- ca_imputed_values
+
+```
+
+## Correlation matrix of all numerical features
+
+```{r}
+
+# correlation
+
+hddd <- hdd %>%
+  mutate(sex = as.numeric(sex), target = as.numeric(target))
+
+# Select only numeric variables for correlation
+
+numeric_vars <- hddd %>% select_if(is.numeric)
+
+numeric_vars <- numeric_vars[, -c(12, 13)]
+
+colnames(numeric_vars) <- c("Age", "Sex", "Chest Pain", "Resting Blood Pressure",
+                            "Cholesterol", "Fasting Blood Sugar", "Resting ECG Results",
+                            "Maximum Heart Rate Achieved", "Exercise Induced Angina",
+                            "Exercise Induced ST Depression", "ECG Slope", 
+                            "Target")
+
+# Compute correlation matrix
+
+cor_matrix <- cor(numeric_vars, use = "pairwise.complete.obs")
+
+# Plot correlation heatmap
+
+ggcorrplot(cor_matrix, 
+           method = "square", 
+           tl.cex = 7,
+           lab = TRUE,
+           lab_size = 2.5,
+           colors = c("blue", "white", "red"), 
+           title = "Correlation Matrix of Cleveland Dataset",
+           legend.title = element_blank())+
+  theme(panel.grid = element_blank())
+
+```
+
+The highest correlation (positive in this case) is between Exercise Induced Depression (oldpeak) and ECG Slope (slope) variables. No surprises here, since both are indicators of how the ST segment of the ECG (electrocardiogram) behaves during exercise. There is also a strong inverse correlation between Maximum heart rate achieved (talach) and our target variable (Heart Disease). Also unsurprising. Chest Pain Type (Cp), Exercise Induced Angina (exang) and Exercise Induced Depression (oldpeak) also correlate positively with our target.
+
+## Visualizations of the selected variables
+
+### Sex
+
+```{r}
+
+### Sex
+
+ggplot(hdd, aes(x = target, fill = sex)) +
+  geom_bar(position = "dodge", width = 0.7) +
+  geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.7),
+            vjust = -0.5, 
+            size = 3) +  
+  labs(title = "Disease Status by Sex",
+       x = " ",
+       y = "Count") +
+  scale_fill_manual(values = c("Male" = "darkorange", "Female" = "darkorchid")) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),             
+    axis.text = element_text(size = 10),  
+    legend.position = "top",          
+    legend.title = element_blank(),
+    panel.grid.major.x = element_blank(),
+    aspect.ratio = 1/1
+  ) 
+
+```
+
+We see that there are a lot more men than women, and also more men with heart disease.
+
+### Age
+
+```{r}
+
+### Age
+
+ggplot(hdd, aes(x = age, fill = sex)) +
+  geom_histogram(
+    aes(y = ..density..), 
+    binwidth = 2,          
+    alpha = 0.3,           
+    position = "identity", 
+    color = "black"        
+  ) +
+  geom_density(alpha = 0.5) + 
+  labs(
+    title = "Age Distribution by Sex",
+    x = "Age",
+    y = "Density"
+  ) +
+  scale_fill_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex" 
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10), 
+    axis.text = element_text(size = 10),  
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10), 
+    panel.grid.major.x = element_blank(), 
+    panel.grid.major.y = element_blank()
+  )
+
+```
+
+We observe a somewhat interesting bimodal distribution in the density plot. We should dive deeper.
+
+```{r}
+
+ggplot(hdd, aes(x = age, fill = sex)) +
+  geom_histogram(
+    aes(y = ..density..),  
+    binwidth = 5,          
+    alpha = 0.3,           
+    position = "identity", 
+    color = "black"        
+  ) +
+  geom_density(alpha = 0.5) + 
+  facet_wrap(~ target) +  
+  labs(
+    title = "Disease Status by Age Distribution and Sex",
+    x = "Age",
+    y = "Density"
+  ) +
+  scale_fill_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex" 
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10), 
+    axis.text = element_text(size = 10),  
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10), 
+    panel.grid.major.x = element_blank(), 
+    panel.grid.major.y = element_blank()
+  )
+
+```
+
+The reason behind it becomes clear when we add the disease status of the individuals. We can clearly see that as age increases, so does the risk of heart disease, and that this fact seems to be more pronounced in women.
+
+### CP (Chest Pain Type)
+
+```{r}
+
+### CP
+
+hdd$cpf <- factor(hdd$cp, labels = c("Typical Angina", "Atypical Angina", "Non-Anginal Pain", "Asymptomatic"))
+
+ggplot(hdd, aes(x = cpf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) + 
+  geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+  labs(
+    title = "Disease Status by Chest Pain Type",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"),  
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+```
+
+When showing diseased vs non-diseased people, it is interesting to see that most diseased individuals are asymptomatic in terms of chest pain. Such is the danger of heart disease, as most of them are silent cases.
+
+```{r}
+
+ggplot(hdd, aes(x = cpf, fill = sex)) +
+  geom_bar(position = 'dodge', width = 0.6) + 
+  geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+  labs(
+    title = "Chest Pain Type by Sex",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),  
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+```
+
+An interesting pattern appears when showing differences between sexes. It seems that most women are not asymptomatic (whereas most men are). However, few women have typical angina compared to men, and most of them show atypical and Non-Anginal Pain. Let's make a last plot to get a clear understanding of this weirdness.
+
+```{r}
+
+ggplot(hdd, aes(x = cpf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) + 
+  geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+  labs(
+    title = "Disease Status by Sex and Chest Pain Type",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"),  
+    name = "Disease Status"
+  ) +
+  facet_grid(. ~ sex) + 
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 7),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+```
+
+Now we show differences between sexes and between diseased and not-diseased, and we see that almost all diseased women are asymptomatic, whereas angina-related symptoms seem to capture more of the diseased men. This suggests that:
+
+-   That chest pain seems not to be strongly correlated with heart disease, both in men and women, but especially in the later case.
+
+-   That men and women have different symptomatology profiles for heart disease.
+
+-   That the symptoms which the study was looking for to detect potential heart disease might be biased towards identifying diseased men.
+
+### trestbps (Resting Blood Pressure)
+
+```{r}
+
+### trestbps
+
+ggplot(hdd, aes(x = target, y = trestbps, fill = sex)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = 16, outlier.size = 2, width = 0.6) +  
+  geom_jitter(aes(color = sex, group=sex), size = 1.5, alpha = 0.2, show.legend = FALSE,
+              position = position_jitterdodge()) + 
+  labs(
+    title = "Disease Status by Resting Blood Pressure",
+    x = " ",
+    y = "Resting Blood Pressure"
+  ) +
+  scale_fill_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex" 
+  ) + 
+  scale_color_manual( 
+    values = c("Male" = "darkorange", "Female" = "darkorchid")
+  ) + 
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),  
+    axis.text = element_text(size = 10),  
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10), 
+    panel.grid.major.x = element_blank(),  
+    panel.grid.minor = element_blank(),
+  )
+
+
+```
+
+It seems that resting blood pressure values are higher in women with heart disease, whereas for men there are no visible differences.
+
+### chol (Cholesterol levels)
+
+```{r}
+
+### chol
+
+ggplot(hdd, aes(x = age, y = chol, color = sex)) +
+  geom_point(alpha = 0.8, size = 2) + 
+  labs(
+    title = "Cholesterol Level by Age",
+    x = " ",
+    y = "Cholesterol Level"
+  ) +
+  scale_color_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex"  
+  ) + 
+  geom_smooth(method='lm', alpha = 0.3)+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10),  
+    axis.text = element_text(size = 10), 
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10),  
+    panel.grid.minor.x = element_blank(),  
+    panel.grid.minor.y = element_blank()
+  )
+
+```
+
+It is noteworthy that women seem to have higher values of cholesterol overall.
+
+```{r}
+
+ggplot(hdd, aes(x = age, y = chol, color = sex)) +
+  geom_point(alpha = 0.8, size = 2) + 
+  labs(
+    title = "Disease Status by Cholesterol Level and Age",
+    x = " ",
+    y = "Cholesterol Level"
+  ) +
+  scale_color_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex"  
+  ) + 
+  geom_smooth(method='lm', alpha = 0.3)+
+  theme_minimal() +
+  facet_wrap(~target)+
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10),  
+    axis.text = element_text(size = 10), 
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10),  
+    panel.grid.minor.x = element_blank(),  
+    panel.grid.minor.y = element_blank()
+  )
+
+```
+
+Though a simple scatterplot shows similar tendency between the sexes, once we adjust for disease status some patterns appear, like an inverse relation between cholesterol and age in diseased women. Some points could be leveraging the data and showing spurious relations, so we can try removing them.
+
+```{r}
+
+hddc <- hdd
+hddc <- hddc[-(which(hdd$chol == max(hdd$chol))),]
+hddc <- hddc[-(which(hddc$sex == 'Female' & hddc$target == 'Disease' & hddc$age<45)),]
+
+ggplot(hddc, aes(x = age, y = chol, color = sex)) +
+  geom_point(alpha = 0.8, size = 2) + 
+  labs(
+    title = "Disease Status by Cholesterol Level and Age",
+    x = " ",
+    y = "Cholesterol Level"
+  ) +
+  scale_color_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex"  
+  ) + 
+  geom_smooth(method='lm', alpha = 0.3)+
+  theme_minimal() +
+  facet_wrap(~target)+
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10),  
+    axis.text = element_text(size = 10), 
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10),  
+    panel.grid.minor.x = element_blank(),  
+    panel.grid.minor.y = element_blank()
+  )
+
+```
+
+The pattern persists after deleting some potential leverage points. This medically counterintuitive result could indicate the effect of some unknown but medically relevant confounder present in diseased individuals, or it could be a statistical construct resulting from selection bias/small sample size.
+
+### fbs (fasting blood sugar)
+
+```{r}
+
+### fbs
+
+#16 (fbs)   (fasting blood sugar > 120 mg/dl)  (1 = true; 0 = false)    
+
+hdd$fbsf <- factor(hdd$fbs, labels = c("No-Fasting", "Fasting"))
+
+ggplot(hdd, aes(x = fbsf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) + 
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Fasting Blood Sugar",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"),  
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+```
+
+Let's check sex differences just in case.
+
+```{r}
+
+ggplot(hdd, aes(x = fbsf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) + 
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Fasting Blood Sugar",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"),  
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  facet_wrap(~sex)+
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+
+```
+
+We see again potential differences between the sexes in the No-Fasting group.
+
+### resteg (resting electrocardiographic results)
+
+```{r}
+
+### resteg
+
+#       -- 7. #19 (restecg)  resting electrocardiographic results
+
+hdd$restecgf <- factor(hdd$restecg, labels = c("Normal", "ST-T Wave Abnormality", "Left Ventr. Hypertrophy"))
+
+ggplot(hdd, aes(x = restecgf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5, 
+            size = 3) + 
+   labs(
+    title = "Disease Status by Resting Electrocardiographic Results",
+    x = " ", 
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"),  
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+```
+
+If we look at the general pattern, it seems that hypertrophy is a good indicator of disease.
+
+```{r}
+
+ggplot(hdd, aes(x = restecgf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5, 
+            size = 3) + 
+   labs(
+    title = "Disease Status by Resting Electrocardiographic Results",
+    x = " ", 
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"),  
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  facet_wrap(~sex)+
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 6),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+```
+
+If we go deeper, stratifying by sex, we see that such claim is true in men, but dubious in women.
+
+### thalach (maximum heart rate achieved)
+
+```{r}
+
+### thalach (maximum hert rate achieved)
+
+ggplot(hdd, aes(x = target, y = thalach, fill = sex)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = 16, outlier.size = 2, width = 0.6) +  
+  geom_jitter(aes(color = sex), size = 1.5, alpha = 0.2, show.legend = FALSE,
+              position = position_jitterdodge()) + 
+  labs(
+    title = "Disease Status by Maximum Heart Rate Achieved",
+    x = " ",
+    y = "Maximum Heart Rate Achieved"
+  ) +
+  scale_fill_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex" 
+  ) +
+   scale_color_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid")
+  ) + 
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10), 
+    axis.text = element_text(size = 10), 
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10), 
+    panel.grid.major.x = element_blank(),  
+    panel.grid.minor = element_blank(),  
+  )
+
+```
+
+Heart rate seems inversely correlated with heart disease, as expected.
+
+### exang (exercise induced angina)
+
+```{r}
+
+### exang (exercise induced angina)
+
+ #38 (exang)     exercise induced angina (1 = yes; 0 = no)
+#       -- 10. #40 (oldpeak)   ST depression induced by exercise relative to rest
+
+hdd$exangf <- factor(hdd$exang, labels = c("Yes", "No"))
+
+ggplot(hdd, aes(x = exangf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Exercise Induced Angina",
+    x = "Exercise Induced Angina ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+```
+
+Lets see sex differences yet again.
+
+```{r}
+
+ggplot(hdd, aes(x = exangf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Exercise Induced Angina",
+    x = "Exercise Induced Angina ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  facet_wrap(~sex)+
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+
+```
+
+Here we reiterate the findings in chest pain type, which suggested that angina is not a good indicator of heart disease, and that its inadequacy as an indicator is more pronounced in women.
+
+### oldpeak (ST depression induced by exercise relative to rest)
+
+```{r}
+
+### oldpeak
+
+# ST depression induced by exercise relative to rest
+
+ggplot(hdd, aes(x = target, y = oldpeak, fill = sex)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = 16, outlier.size = 2, width = 0.6) +  
+   geom_jitter(aes(color = sex), size = 1.5, alpha = 0.2, show.legend = FALSE,
+               position = position_jitterdodge()) +
+  labs(
+    title = "Disease Status by ST Depression Induced by Exercise Relative to Rest",
+    x = " ",
+    y = "ST Depression Induced by Exercise Relative to Rest"
+  ) +
+  scale_fill_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex" 
+  ) + 
+  scale_color_manual( 
+    values = c("Male" = "darkorange", "Female" = "darkorchid")
+  ) + 
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10), 
+    axis.text = element_text(size = 10), 
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10),  
+    panel.grid.major.x = element_blank(),  
+    panel.grid.minor = element_blank(),  
+  )
+
+pvalue <- grubbs.test(hdd$oldpeak)
+
+```
+
+According to expert criteria found in the literature, values beyond 6-7 mm would be highly unusual and likely errors or extreme cases. So even though testing for outliers might suggest us to delete the 6.2 observation (with the Grubbs test, for instance), it falls within the range of the possible. Overall, higher values correlate with heart disease.
+
+### slope (slope of the peak exercise ST segment)
+
+```{r}
+
+### slope
+
+#       -- 11. #41 (slope)     the slope of the peak exercise ST segment
+
+
+hdd$slopef <- factor(hdd$slope, labels = c("upsloping", "flat", "downsloping"))
+
+ggplot(hdd, aes(x = slopef, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Slope of the Peak Exercise ST Segment",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+```
+
+```{r}
+
+ggplot(hdd, aes(x = slopef, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = " Disease Status by Slope of the Peak Exercise ST Segment",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  facet_wrap(~sex)+
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+```
+
+This variable is highly related with men with heart disease, but no so much in women.
+
+### Ca (number of major vessels colored by flourosopy)
+
+```{r}
+
+### ca   NA handling 
+
+#       -- 12. #44 (ca)     number of major vessels (0-3) colored by flourosopy   
+
+hdd$caf <- as.factor(hdd$ca) 
+
+ggplot(hdd, aes(x = caf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6), 
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Number of Major Vessels Colored by Fluoroscopy",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+```
+
+```{r}
+
+ggplot(hdd, aes(x = caf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6), 
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Number of Major Vessels Colored by Fluoroscopy",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  facet_wrap(~sex)+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+```
+
+This variable seems overall highly positively correlated with our target, especially for men.
+
+### thal (thalassemia)
+
+```{r}
+
+### thal
+
+#       -- 13. #51 (thal)      3 = normal; 6 = fixed defect; 7 = reversable defect
+#       -- 14. #58 (num)       (the predicted attribute)
+
+hdd$thalf <- factor(hdd$thal, labels = c("Normal", "Fixed defect", "Reversable defect"))
+
+ggplot(hdd, aes(x = thalf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5, 
+            size = 3) + 
+   labs(
+    title = "Disease Status by Thal",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+```
+
+```{r}
+
+ggplot(hdd, aes(x = thalf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5, 
+            size = 3) + 
+   labs(
+    title = "Disease Status by Thal",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  facet_wrap(~sex)+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+
+```
+
+A thalassemia-related reversible defect seems to correlate with disease in both men and women.
+
+# Conclusions
+
+The present exploratory analysis has confirmed some of our early suspicions, i.e. that the data and the study design fall victim of the biases and contingencies of the place and time of collection. Overall, the trends observed between the target and the potential predictors make sense visually and medically. However, in some important cases, with some gender perspective, the inadequacy of the selection criteria and of some of the selected surrogates for disease has been highlighted.
+
+# Code for 1
+
+```{r, echo = TRUE, eval = FALSE}
+
+pac <- c("tidyverse",
+         "writexl",
+         "readxl",
+         "ggplot2",
+         "VIM",
+         "mice",
+         "outliers",
+         "ggcorrplot"
+)
+
+toinstall <- pac[!pac %in% installed.packages()]
+if(length(toinstall) > 0) install.packages(toinstall)
+l <- lapply(pac, require, character.only=TRUE)
+
+#
+
+hdd <- read.csv('heart_disease_dataset.csv', sep = ' ')
+head(hdd)
+
+# Variable recategorization
+
+hdd$target <- factor(ifelse(hdd$num == 0, "Non-Disease", "Disease"),
+                              levels = c("Non-Disease", "Disease"))
+
+hdd$sex <- factor(hdd$sex, labels = c("Female", "Male"))
+
+# Check order
+
+ggplot(hdd, aes(x = patient_id, y = age, color = target)) +
+  scale_color_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D")) +
+  geom_point() +
+  labs(title = "Disease status by Id",
+       x = "Id",
+       y = "count") +
+  theme_minimal() +
+   theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),             
+    axis.text = element_text(size = 10),  
+    legend.position = "top",          
+    legend.title = element_blank(),
+    panel.grid.major.x = element_blank(),
+  ) 
+
+# Inspecting missing data (NA's)
+
+hdd[hdd == "?"] <- NA
+
+hdd_na <- hdd %>% select(-c(num, patient_id))
+
+matrixplot(hdd, sortby = "target")
+
+# NA imputation
+
+set.seed(314)
+thal_proportions <- prop.table(table(hdd$thal))
+ca_proportions <- prop.table(table(hdd$ca))
+
+thal_missing_indices <- which(is.na(hdd$thal))
+ca_missing_indices <- which(is.na(hdd$ca))
+
+thal_imputed_values <- sample(names(thal_proportions), length(thal_missing_indices), 
+                         replace = TRUE, prob = thal_proportions)
+ca_imputed_values <- sample(names(ca_proportions), length(ca_missing_indices), 
+                         replace = TRUE, prob = ca_proportions)
+
+hdd$thal[thal_missing_indices] <- thal_imputed_values
+hdd$ca[ca_missing_indices] <- ca_imputed_values
+
+# correlation
+
+hddd <- hdd %>%
+  mutate(sex = as.numeric(sex), target = as.numeric(target))
+
+# Select only numeric variables for correlation
+
+numeric_vars <- hddd %>% select_if(is.numeric)
+numeric_vars <- numeric_vars[, -c(12, 13)]
+
+colnames(numeric_vars) <- c("Age", "Sex", "Chest Pain", "Resting Blood Pressure",
+                            "Cholesterol", "Fasting Blood Sugar", "Resting ECG Results",
+                            "Maximum Heart Rate Achieved", "Exercise Induced Angina",
+                            "Exercise Induced ST Depression", "ECG Slope", 
+                            "Target")
+
+# Compute correlation matrix
+
+cor_matrix <- cor(numeric_vars, use = "pairwise.complete.obs")
+
+# Plot correlation heatmap
+
+ggcorrplot(cor_matrix, 
+           method = "square", 
+           #type = "upper", 
+           tl.cex = 7,
+           lab = TRUE,
+           lab_size = 2.5,
+           colors = c("blue", "white", "red"), 
+           title = "Correlation Matrix of Cleveland Dataset")+
+  theme(panel.grid = element_blank())
+
+# Sex
+
+ggplot(hdd, aes(x = target, fill = sex)) +
+  geom_bar(position = "dodge", width = 0.7) +
+  geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.7),
+            vjust = -0.5, 
+            size = 3) +  
+  labs(title = "Disease Status by Sex",
+       x = " ",
+       y = "Count") +
+  scale_fill_manual(values = c("Male" = "darkorange", "Female" = "darkorchid")) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),             
+    axis.text = element_text(size = 10),  
+    legend.position = "top",          
+    legend.title = element_blank(),
+    panel.grid.major.x = element_blank(),
+    aspect.ratio = 1/1
+  ) 
+
+# Age
+
+ggplot(hdd, aes(x = age, fill = sex)) +
+  geom_histogram(
+    aes(y = ..density..), 
+    binwidth = 2,          
+    alpha = 0.3,           
+    position = "identity", 
+    color = "black"        
+  ) +
+  geom_density(alpha = 0.5) + 
+  labs(
+    title = "Age Distribution by Sex",
+    x = "Age",
+    y = "Density"
+  ) +
+  scale_fill_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex" 
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10), 
+    axis.text = element_text(size = 10),  
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10), 
+    panel.grid.major.x = element_blank(), 
+    panel.grid.major.y = element_blank()
+  )
+
+ggplot(hdd, aes(x = age, fill = sex)) +
+  geom_histogram(
+    aes(y = ..density..),  
+    binwidth = 5,          
+    alpha = 0.3,           
+    position = "identity", 
+    color = "black"        
+  ) +
+  geom_density(alpha = 0.5) + 
+  facet_wrap(~ target) +  
+  labs(
+    title = "Disease Status by Age Distribution and Sex",
+    x = "Age",
+    y = "Density"
+  ) +
+  scale_fill_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex" 
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10), 
+    axis.text = element_text(size = 10),  
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10), 
+    panel.grid.major.x = element_blank(), 
+    panel.grid.major.y = element_blank()
+  )
+
+# CP
+
+hdd$cpf <- factor(hdd$cp, labels = c("Typical Angina", "Atypical Angina", "Non-Anginal Pain", "Asymptomatic"))
+
+table(hdd$cpf, hdd$target)
+
+ggplot(hdd, aes(x = cpf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) + 
+  geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+  labs(
+    title = "Disease Status by Chest Pain Type",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"),  
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+ggplot(hdd, aes(x = cpf, fill = sex)) +
+  geom_bar(position = 'dodge', width = 0.6) + 
+  geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+  labs(
+    title = "Chest Pain Type by Sex",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),  
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+ggplot(hdd, aes(x = cpf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) + 
+  geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+  labs(
+    title = "Disease Status by Sex and Chest Pain Type",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"),  
+    name = "Disease Status"
+  ) +
+  facet_grid(. ~ sex) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 7),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+# trestbps
+
+ggplot(hdd, aes(x = target, y = trestbps, fill = sex)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = 16, outlier.size = 2, width = 0.6) +  
+  geom_jitter(aes(color = sex, group=sex), size = 1.5, alpha = 0.2, show.legend = FALSE,
+              position = position_jitterdodge()) + 
+  labs(
+    title = "Disease Status by Resting Blood Pressure",
+    x = " ",
+    y = "Resting Blood Pressure"
+  ) +
+  scale_fill_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex" 
+  ) + 
+  scale_color_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid")
+  ) + 
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),  
+    axis.text = element_text(size = 10),  
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10), 
+    panel.grid.major.x = element_blank(),  
+    panel.grid.minor = element_blank(),
+  )
+
+# chol
+
+ggplot(hdd, aes(x = age, y = chol, color = sex)) +
+  geom_point(alpha = 0.8, size = 2) + 
+  labs(
+    title = "Cholesterol Level by Age",
+    x = " ",
+    y = "Cholesterol Level"
+  ) +
+  scale_color_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex"  
+  ) + 
+  geom_smooth(method='lm', alpha = 0.3)+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10),  
+    axis.text = element_text(size = 10), 
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10),  
+    panel.grid.minor.x = element_blank(),  
+    panel.grid.minor.y = element_blank()
+  )
+
+ggplot(hdd, aes(x = age, y = chol, color = sex)) +
+  geom_point(alpha = 0.8, size = 2) + 
+  labs(
+    title = "Cholesterol Level by Age",
+    x = " ",
+    y = "Cholesterol Level"
+  ) +
+  scale_color_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex"  
+  ) + 
+  geom_smooth(method='lm', alpha = 0.3)+
+  theme_minimal() +
+  facet_wrap(~target)+
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10),  
+    axis.text = element_text(size = 10), 
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10),  
+    panel.grid.minor.x = element_blank(),  
+    panel.grid.minor.y = element_blank()
+  )
+
+hddc <- hdd
+hddc <- hddc[-(which(hdd$chol == max(hdd$chol))),]
+hddc <- hddc[-(which(hddc$sex == 'Female' & hddc$target == 'Disease' & hddc$age<45)),]
+
+ggplot(hddc, aes(x = age, y = chol, color = sex)) +
+  geom_point(alpha = 0.8, size = 2) + 
+  labs(
+    title = "Disease Status by Cholesterol Level and Age",
+    x = " ",
+    y = "Cholesterol Level"
+  ) +
+  scale_color_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex"  
+  ) + 
+  geom_smooth(method='lm', alpha = 0.3)+
+  theme_minimal() +
+  facet_wrap(~target)+
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10),  
+    axis.text = element_text(size = 10), 
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10),  
+    panel.grid.minor.x = element_blank(),  
+    panel.grid.minor.y = element_blank()
+  )
+
+# fbs
+
+hdd$fbsf <- factor(hdd$fbs, labels = c("No-Fasting", "Fasting"))
+
+ggplot(hdd, aes(x = fbsf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) + 
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Fasting Blood Sugar",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"),  
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+ggplot(hdd, aes(x = fbsf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) + 
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Fasting Blood Sugar",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"),  
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  facet_wrap(~sex)+
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+# resteg
+
+hdd$restecgf <- factor(hdd$restecg, labels = c("Normal", "ST-T Wave Abnormality", "Left Ventr. Hypertrophy"))
+
+ggplot(hdd, aes(x = restecgf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5, 
+            size = 3) + 
+   labs(
+    title = "Disease Status by Resting Electrocardiographic Results",
+    x = " ", 
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"),  
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+ggplot(hdd, aes(x = restecgf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5, 
+            size = 3) + 
+   labs(
+    title = "Disease Status by Resting Electrocardiographic Results",
+    x = " ", 
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"),  
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  facet_wrap(~sex)+
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 6),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+# thalach
+
+ggplot(hdd, aes(x = target, y = thalach, fill = sex)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = 16, outlier.size = 2, width = 0.6) +  
+  geom_jitter(aes(color = sex), size = 1.5, alpha = 0.2, show.legend = FALSE,
+              position = position_jitterdodge()) + 
+  labs(
+    title = "Disease Status by Maximum Heart Rate Achieved",
+    x = " ",
+    y = "Maximum Heart Rate Achieved"
+  ) +
+  scale_fill_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex" 
+  ) +
+   scale_color_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid")
+  ) + 
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10), 
+    axis.text = element_text(size = 10), 
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10), 
+    panel.grid.major.x = element_blank(),  
+    panel.grid.minor = element_blank(),  
+  )
+
+# exang
+
+hdd$exangf <- factor(hdd$exang, labels = c("Yes", "No"))
+
+ggplot(hdd, aes(x = exangf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Exercise Induced Angina",
+    x = "Exercise Induced Angina ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+ggplot(hdd, aes(x = exangf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Exercise Induced Angina",
+    x = "Exercise Induced Angina ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  facet_wrap(~sex)+
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+# oldpeak
+
+ggplot(hdd, aes(x = target, y = oldpeak, fill = sex)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = 16, outlier.size = 2, width = 0.6) +  
+   geom_jitter(aes(color = sex), size = 1.5, alpha = 0.2, show.legend = FALSE,
+               position = position_jitterdodge()) +
+  labs(
+    title = "Disease Status by ST Depression Induced by Exercise Relative to Rest",
+    x = " ",
+    y = "ST Depression Induced by Exercise Relative to Rest"
+  ) +
+  scale_fill_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid"),
+    name = "Sex" 
+  ) + 
+  scale_color_manual(
+    values = c("Male" = "darkorange", "Female" = "darkorchid")
+  ) + 
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),  
+    axis.title = element_text(size = 10), 
+    axis.text = element_text(size = 10), 
+    legend.position = "top",  
+    legend.title = element_blank(),  
+    legend.text = element_text(size = 10),  
+    panel.grid.major.x = element_blank(),  
+    panel.grid.minor = element_blank(),  
+  )
+
+# outliers test for oldpeak
+
+grubbs.test(hdd$oldpeak)
+
+# slope
+
+hdd$slopef <- factor(hdd$slope, labels = c("upsloping", "flat", "downsloping"))
+
+ggplot(hdd, aes(x = slopef, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Slope of the Peak Exercise ST Segment",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+ggplot(hdd, aes(x = slopef, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = " Disease Status by Slope of the Peak Exercise ST Segment",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  facet_wrap(~sex)+
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+# ca
+ 
+hdd$caf <- as.factor(hdd$ca) 
+
+ggplot(hdd, aes(x = caf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6), 
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Number of Major Vessels Colored by Fluoroscopy",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+ggplot(hdd, aes(x = caf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6), 
+            vjust = -0.5,  
+            size = 3) + 
+   labs(
+    title = "Disease Status by Number of Major Vessels Colored by Fluoroscopy",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  facet_wrap(~sex)+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+# thal
+
+hdd$thalf <- factor(hdd$thal, labels = c("Normal", "Fixed defect", "Reversable defect"))
+
+ggplot(hdd, aes(x = thalf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5, 
+            size = 3) + 
+   labs(
+    title = "Disease Status by Thal",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+ggplot(hdd, aes(x = thalf, fill = target)) +
+  geom_bar(position = 'dodge', width = 0.6) +  
+   geom_text(stat = "count", aes(label = ..count..), 
+            position = position_dodge(width = 0.6),  
+            vjust = -0.5, 
+            size = 3) + 
+   labs(
+    title = "Disease Status by Thal",
+    x = " ",  
+    y = "Count"
+  ) +
+  scale_fill_manual(
+    values = c("Non-Disease" = "#00BFC4", "Disease" = "#F8766D"), 
+    name = "Disease Status"
+  ) +
+  facet_wrap(~sex)+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5), 
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    legend.position = "top",
+    legend.title = element_blank(),
+    legend.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    )
+
+```
+
+# 2. Difference in mortality rates in hospitalized COVID-19 patients
+
+Using the supplementary material from the [Difference in mortality rates in hospitalized COVID-19 patients identified by cytokine profile clustering using a machine learning approach: An outcome prediction alternative](https://www.frontiersin.org/articles/10.3389/fmed.2022.987182/full), perform the following tasks
+
+```{r}
+
+replace_spaces <- function(df) {
+    names(df) <- gsub(" ", "_", names(df))
+    return(df)
+}
+
+#load data from supplementary data
+patient_metadata <- read_xlsx("Table_1.xlsx")
+colnames(patient_metadata) <- patient_metadata[1, ]
+patient_metadata <- patient_metadata[-1,]
+
+cyto_data <- read_xlsx("Table_2.xlsx")
+colnames(cyto_data) <- cyto_data[1, ] 
+cyto_data <- cyto_data[-1,]
+
+for(i in 1:nrow(cyto_data)){
+  if(is.na(cyto_data[i, 1]) == TRUE){
+    cyto_data[i, 1] <- cyto_data[i-1, 1]
+  }
+}
+
+colnames(cyto_data)[1] <- 'ID'
+
+cyto_data <- replace_spaces(cyto_data)
+patient_metadata <- replace_spaces(patient_metadata)
+
+
+```
+
+## Reproduce Figure 1 from the publication
+
+```{r}
+
+plot_a <- ggplot(patient_metadata, aes( x = as.numeric(Age)))+
+  geom_histogram(binwidth = 10, fill = "lightblue", color = "black") +
+  labs(title = "Age", x = "Age (years)", y = "Frequency (n)") +
+  theme_minimal(base_size = 16) +
+  theme_classic()+
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title = element_text(face = "bold")              
+  )
+
+patient_metadata <- patient_metadata %>% mutate(clinical_classification = case_when(
+   Use_of_NIV == "No" & Use_of_AMV == "No" & ARDS_Diagnosis == "No" ~ "G1",
+    ARDS_Diagnosis == "No" ~ "G2",
+   Use_of_NIV == "Yes" & Use_of_AMV == "No" & ARDS_Diagnosis == "Yes" ~ "G3",
+   Use_of_AMV == "Yes" & ARDS_Diagnosis == "Yes" ~ "G4",
+)) %>% filter(!is.na(clinical_classification)) %>% filter(!duplicated(ID))
+
+```
+
+```{r generate_table, echo=FALSE}
+
+data <- data.frame(
+  Clinical.classification = c("G1", "G2", "G3", "G4"),
+  NIV = c("-", "-/+", "+", "-/+"),
+  AMV = c("-", "+/-", "-", "+"),
+  ARDS = c("-", "-", "+", "+")
+)
+
+colnames(data) <- c("Clinical\nclassification", "NIV", "AMV", "ARDS")
+
+custom_theme <- ttheme_minimal(
+  core = list(
+    fg_params = list(hjust = 0.5, x = 0.5, fontsize = 10),
+    bg_params = list(fill = "grey95", col = NA)
+  ),
+  colhead = list(
+    fg_params = list(fontface = "bold", hjust = 0.5, x = 0.5, fontsize = 10), 
+    bg_params = list(fill = "grey85", col = NA) 
+  ),
+  rowhead = list(
+    fg_params = list(hjust = 1, x = 0.9, fontsize = 10) 
+  ),
+  padding = unit(c(4, 4), "mm") 
+)
+
+table <- tableGrob(data, rows = NULL, theme = custom_theme)
+
+title <- textGrob(
+  "Definition of the clinical classification",
+  gp = gpar(fontsize = 8, fontface = "bold")
+)
+padding_title <- unit(5, "mm")
+
+table_with_title <- gtable_add_rows(
+  table,
+  heights = grobHeight(title) + padding_title,
+  pos = 0
+)
+table_with_title <- gtable_add_grob(
+  table_with_title,
+  title,
+  t = 1,        
+  l = 1,      
+  r = ncol(table_with_title), 
+  name = "title" 
+)
+
+table_with_title$layout[table_with_title$layout$name == "title", ]$clip <- "off"
+
+
+```
+
+```{r generate_table2, echo=FALSE}
+
+plot_c <- ggplot(patient_metadata, aes(x = clinical_classification, fill = clinical_classification)) +
+  geom_bar( color = "black") + 
+  geom_text(stat = "count", aes(label = ..count..), vjust = -0.5, size = 5) + 
+  scale_fill_manual(values = c("G1" = "#66c2a5", "G2" = "#ffd92f", "G3" = "#8da0cb", "G4" = "#fc8d62")) +  
+  labs(title = "Clinical classification", x = "Clinical classification", y = "Frequency (n)") +
+  ylim(c(0, 80))+
+  theme_minimal(base_size = 16) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 10),  
+    axis.title = element_text(face = "bold", size = 8),             
+    legend.position = "none"                               
+  )
+
+```
+
+```{r}
+
+vital_status_counts <- table(patient_metadata$Death, useNA = "no") 
+vital_status_data_plot <- data.frame(
+  Vital_Status = factor(names(vital_status_counts), levels = c("No", "Yes")), 
+  Frequency = as.numeric(vital_status_counts)
+)
+vital_status_data_plot <- vital_status_data_plot[-1, ]
+
+bar_colors <- c("No" = "#A7E1BD", "Yes" = "#FCE88A") 
+
+plot_d <- ggplot(vital_status_data_plot, aes(x = Vital_Status, y = Frequency, fill = Vital_Status)) +
+  geom_bar(stat = "identity", color = "black") + 
+  scale_fill_manual(values = bar_colors) + 
+  geom_text(aes(label = Frequency),vjust = -1, size = 4) + 
+  labs(
+    title = "Vital status",
+    x = "Death",
+    y = "Frequency (n)"
+  ) +
+  scale_y_continuous(limits = c(0, 180), breaks = seq(0, 150, by = 50)) + 
+  scale_x_discrete(labels = c("No", "Yes")) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    axis.line.x.bottom = element_line(color = "black", linewidth = 1),
+    axis.line.y.left = element_line(color = "black", linewidth = 1),
+    axis.ticks.y = element_line(color = "black", linewidth = 1),
+    axis.ticks.length.y = unit(7, "pt"),
+    axis.title.x = element_text(hjust = 0.5, vjust=-1),
+    plot.title = element_text(hjust = 0.5)                              
+  ) +
+  guides(fill = "none") 
+
+```
+
+```{r}
+combined_plot <- ggarrange(plot_a, table_with_title, plot_c, plot_d,
+                            labels = c("A", "B", "C", "D"), 
+                            ncol = 2, nrow = 2,
+                            heights = c(1, 1.40)
+                            )
+
+combined_plot
+
+```
+
+## Reproduce Figure 2 from the publication
+
+but instead of representing the clusters in the annotation, represent the groups (G1 to G4)
+
+```{r}
+
+cytokine_names <- c("IL-1β", "IL-6", "IL-10", "IFN-ɑ", "TNF-ɑ", "IL-8", "G-CSF",
+                    "IFN-γ", "CCL3", "CXCL10", "CCL2", "IL-38")
+
+cytokine_data_for_clustering <- cyto_data[, cytokine_names]
+cytokine_matrix <- as.matrix(sapply(cytokine_data_for_clustering, as.numeric))
+rownames(cytokine_matrix) <- cyto_data$ID 
+
+cytokine_matrix[cytokine_matrix == "NI"] <- 0
+colnames(cyto_data)[6:7] <- c("IFN-a", "TNF-a")
+
+df_cleaned <- cyto_data %>%
+  mutate_at(vars(`IL-1β`:`IL-38`), ~na_if(., "NI")) %>%
+  mutate_at(vars(`IL-1β`:`IL-38`), as.numeric)
+cytokine_cols <- c("IL-1β", "IL-6", "IL-10", "IFN-a", "TNF-a","IL-8","G-CSF","IFN-γ","CCL3","CXCL10","CCL2","IL-38" )
+
+df_mean <- df_cleaned %>%
+  group_by(ID) %>%
+  summarise(
+    across(
+      .cols = all_of(cytokine_cols),  
+      .fns = ~mean(., na.rm = TRUE),
+      .names = "{.col}_mean"
+    )
+  )
+
+colnames(df_mean) <- gsub("_mean", "", colnames(df_mean))
+
+cytokine_matrix <- df_mean %>%
+  column_to_rownames("ID") %>%
+  t() %>%  
+  as.matrix()
+
+cytokine_matrix_pct <- apply(cytokine_matrix, 2, function(x) {
+  if(all(is.na(x)) || max(x, na.rm = TRUE) == 0) { 
+    return(x) 
+  } else { 
+    return(x/max(x, na.rm = TRUE) * 100) 
+  }
+})
+
+# hierarchical clustering
+hc_rows <- hclust(dist(cytokine_matrix_pct), method = "complete") 
+hc_cols <- hclust(dist(t(cytokine_matrix_pct)), method = "complete") 
+
+clusters <- cutree(hc_cols, k = 3)
+
+annotation_col <- data.frame(
+  Cluster = factor(paste0("C", clusters))
+)
+rownames(annotation_col) <- colnames(cytokine_matrix)
+
+cluster_colors <- c("C1" = "#E67E78", "C2" = "#6BBF64", "C3" = "#6E9FD3")
+ann_colors <- list(Cluster = cluster_colors)
+orange_palette <- colorRampPalette(c("#FFF5EB", "#FDD9B5", "#E59148", "#8B4513"))(100)
+
+pheatmap(cytokine_matrix_pct,
+         color = orange_palette,
+         cluster_rows = hc_rows,
+         cluster_cols = hc_cols,
+         annotation_col = annotation_col, 
+         annotation_colors = ann_colors,
+         main = "",
+         fontsize = 12,
+         fontsize_row = 10,
+         labels_col = rep("", ncol(cytokine_matrix)), 
+         display_numbers = FALSE,
+         border_color = NA,
+         legend = TRUE,
+         legend_breaks = c(0, 50, 100),
+         legend_labels = c("0.00", "50.0%", "100.0%")
+         )
+
+```
+
+## Improve figure 2 of the publication
+
+Add a second annotation with information of death and a third one with information of gender
+
+```{r}
+
+cytokine_matrix_pct <- t(apply(cytokine_matrix, 1, function(x) {
+  if(all(is.na(x)) || max(x, na.rm = TRUE) == 0) { 
+    return(x) 
+  } else { 
+    return(x/max(x, na.rm = TRUE) * 100) 
+  }
+}))
+
+col_fun <- colorRamp2(
+  c(0, 25, 50, 75, 100), 
+  c("#FFFFFF", "#FEE5D9", "#FCBBA1", "#FC9272", "#A50F15")
+)
+
+clusters <- cutree(hc_cols, k = 3)
+
+cluster_names <- c("C1" = "High IL-6/IL-8", 
+                   "C2" = "Moderate Response", 
+                   "C3" = "Low Expression")
+cluster_ids <- factor(paste0("C", clusters))
+cluster_labels <- cluster_names[as.character(cluster_ids)]
+
+
+column_ha <- HeatmapAnnotation(
+  Cluster = cluster_ids,
+  Cluster_Name = anno_text(
+    cluster_labels,
+    rot = 0,
+    gp = gpar(fontsize = 8),
+    location = 0.5
+  ),
+  col = list(Cluster = c("C1" = "#E67E78", "C2" = "#6BBF64", "C3" = "#6E9FD3")),
+  annotation_height = c(10, 25),
+  show_legend = TRUE,
+  show_annotation_name = TRUE
+)
+
+cytokine_groups <- list(
+  "Pro-inflammatory" = c("IL-1β", "IL-6", "TNF"),
+  "Chemokines" = c("CXCL10", "IL-8", "CCL2", "CCL3"),
+  "Interferons" = c("IFN-alpha", "IFN-gamma"),
+  "Anti-inflammatory" = c("IL-10"),
+  "Other" = c("IL-38", "G-CSF")
+)
+
+cytokine_group_assignments <- rep("Other", nrow(cytokine_matrix_pct))
+names(cytokine_group_assignments) <- rownames(cytokine_matrix_pct)
+
+for(group_name in names(cytokine_groups)) {
+  for(cytokine in cytokine_groups[[group_name]]) {
+    idx <- which(rownames(cytokine_matrix_pct) == cytokine)
+    if(length(idx) > 0) {
+      cytokine_group_assignments[idx] <- group_name
+    }
+  }
+}
+
+row_ha <- rowAnnotation(
+  Group = factor(cytokine_group_assignments),
+  col = list(Group = c(
+    "Pro-inflammatory" = "#E41A1C",
+    "Chemokines" = "#377EB8", 
+    "Interferons" = "#4DAF4A",
+    "Anti-inflammatory" = "#984EA3",
+    "Other" = "#FF7F00"
+  )),
+  show_legend = TRUE
+)
+
+cytokine_matrix_pct <- as.matrix(cytokine_matrix_pct)
+
+patient_metadata$Death <- as.character(patient_metadata$Death)
+patient_metadata[patient_metadata[,"Death"] == "3","Death"] <- "No"
+patient_metadata$Gender <- as.character(patient_metadata$Gender)
+patient_metadata[patient_metadata[,"Gender"] == "72", "Gender"] <- "M"
+
+patient_metadata <- patient_metadata[match(colnames(cytokine_matrix_pct), patient_metadata$ID),]
+
+annotation_df <- data.frame(
+  Cluster = factor(paste0("C", clusters)),
+  Death = factor(patient_metadata$Death), 
+  Gender = factor(patient_metadata$Gender)
+)
+rownames(annotation_df) <- colnames(cytokine_matrix_pct)
+
+ann_colors <- list(
+  Cluster = c("C1" = "#E67E78", "C2" = "#6BBF64", "C3" = "#6E9FD3"),
+  Death = c("Yes" = "black", "No" = "white"),  
+  Gender = c("M" = "#4575B4", "F" = "#D73027")  
+)
+
+column_ha <- HeatmapAnnotation(
+  df = annotation_df,
+  col = ann_colors,
+  annotation_height = c(unit(4, "mm"), unit(4, "mm"), unit(4, "mm")),
+  show_legend = TRUE,
+  show_annotation_name = TRUE,
+  annotation_name_gp = gpar(fontsize = 8),
+  annotation_legend_param = list(
+    Cluster = list(
+      title_gp = gpar(fontsize = 8),
+      labels_gp = gpar(fontsize = 7)
+    ),
+    Death = list(
+      title_gp = gpar(fontsize = 8),
+      labels_gp = gpar(fontsize = 7)
+    ),
+    Gender = list(
+      title_gp = gpar(fontsize = 8),
+      labels_gp = gpar(fontsize = 7)
+    )
+  )
+)
+
+ht <- Heatmap(cytokine_matrix_pct,
+        name = "Relative\nexpression (%)",
+        col = col_fun,
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        column_split = cluster_ids,
+        column_labels = rep("", ncol(cytokine_matrix_pct)),
+        row_labels = rownames(cytokine_matrix_pct),
+        row_names_gp = gpar(fontface = "bold", fontsize = 7),
+        row_split = cytokine_group_assignments,
+        row_title_gp = gpar(fontsize = 9, fontface = "bold"),
+        border = TRUE,
+        row_gap = unit(1, "mm"),
+        column_gap = unit(1, "mm"),
+        row_dend_width = unit(0.5, "cm"),
+        column_dend_height = unit(0.5, "cm"),
+        row_title_rot = 0,
+        width = unit(ncol(cytokine_matrix_pct) * 0.03, "cm"),
+        height = unit(nrow(cytokine_matrix_pct) * 0.3, "cm"),
+        heatmap_legend_param = list(
+          title = "Relative Expression",
+          at = c(0, 25, 50, 75, 100),
+          labels = c("0%", "25%", "50%", "75%", "100%"),
+          legend_height = unit(3, "cm"),
+          title_position = "leftcenter-rot",
+          title_gp = gpar(fontsize = 8),
+          labels_gp = gpar(fontsize = 7)
+        )
+)
+
+draw(ht, 
+     heatmap_legend_side = "right",
+     column_title = "Cytokine Expression Profiles Across Patient Cohorts",
+     column_title_gp = gpar(fontsize = 10, fontface = "bold"),
+     row_title = "Cytokines",
+     padding = unit(c(1, 1, 1, 1), "mm"),
+     merge_legends = TRUE)
+
+```
+
+# Code for 2
+
+```{r, echo = TRUE, eval = FALSE}
+
+patient_metadata <- read_xlsx("Table_1.xlsx")
+colnames(patient_metadata) <- patient_metadata[1, ]
+patient_metadata <- patient_metadata[-1,]
+
+cyto_data <- read_xlsx("Table_2.xlsx")
+colnames(cyto_data) <- cyto_data[1, ]
+cyto_data <- cyto_data[-1,]
+
+for(i in 1:nrow(cyto_data)){
+  if(is.na(cyto_data[i, 1]) == TRUE){
+    cyto_data[i, 1] <- cyto_data[i-1, 1]
+  }
+}
+
+colnames(cyto_data)[1] <- 'ID'
+
+cyto_data <- replace_spaces(cyto_data)
+patient_metadata <- replace_spaces(patient_metadata)
+
+# fig 1.A
+plot_a <- ggplot(patient_metadata, aes( x = as.numeric(Age)))+
+  geom_histogram(binwidth = 10, fill = "lightblue", color = "black") +
+  labs(title = "Age", x = "Age (years)", y = "Frequency (n)") +
+  theme_minimal(base_size = 16) +
+  theme_classic()+
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.title = element_text(face = "bold")              
+  )
+
+patient_metadata <- patient_metadata %>% mutate(clinical_classification = case_when(
+   Use_of_NIV == "No" & Use_of_AMV == "No" & ARDS_Diagnosis == "No" ~ "G1",
+    ARDS_Diagnosis == "No" ~ "G2",
+   Use_of_NIV == "Yes" & Use_of_AMV == "No" & ARDS_Diagnosis == "Yes" ~ "G3",
+   Use_of_AMV == "Yes" & ARDS_Diagnosis == "Yes" ~ "G4",
+)) %>% filter(!is.na(clinical_classification)) %>% filter(!duplicated(ID))
+
+# fig 1.B
+data <- data.frame(
+  Clinical.classification = c("G1", "G2", "G3", "G4"),
+  NIV = c("-", "-/+", "+", "-/+"),
+  AMV = c("-", "+/-", "-", "+"),
+  ARDS = c("-", "-", "+", "+")
+)
+
+colnames(data) <- c("Clinical\nclassification", "NIV", "AMV", "ARDS")
+
+custom_theme <- ttheme_minimal(
+  core = list(
+    fg_params = list(hjust = 0.5, x = 0.5, fontsize = 10), 
+    bg_params = list(fill = "grey95", col = NA) 
+  ),
+  colhead = list(
+    fg_params = list(fontface = "bold", hjust = 0.5, x = 0.5, fontsize = 10), 
+    bg_params = list(fill = "grey85", col = NA) 
+  ),
+  rowhead = list(
+    fg_params = list(hjust = 1, x = 0.9, fontsize = 10) 
+  ),
+  padding = unit(c(4, 4), "mm") 
+)
+
+table <- tableGrob(data, rows = NULL, theme = custom_theme)
+
+title <- textGrob(
+  "Definition of the clinical classification",
+  gp = gpar(fontsize = 8, fontface = "bold") 
+)
+padding_title <- unit(5, "mm")
+
+table_with_title <- gtable_add_rows(
+  table,
+  heights = grobHeight(title) + padding_title,
+  pos = 0  
+)
+table_with_title <- gtable_add_grob(
+  table_with_title,
+  title,
+  t = 1,         
+  l = 1,       
+  r = ncol(table_with_title), 
+  name = "title" 
+)
+
+table_with_title$layout[table_with_title$layout$name == "title", ]$clip <- "off"
+
+# fig 1.C
+plot_c <- ggplot(patient_metadata, aes(x = clinical_classification, fill = clinical_classification)) +
+  geom_bar( color = "black") + 
+  geom_text(stat = "count", aes(label = ..count..), vjust = -0.5, size = 5) +  
+  scale_fill_manual(values = c("G1" = "#66c2a5", "G2" = "#ffd92f", "G3" = "#8da0cb", "G4" = "#fc8d62")) +  
+  labs(title = "Clinical classification", x = "Clinical classification", y = "Frequency (n)") +
+  ylim(c(0, 80))+
+  theme_minimal(base_size = 16) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 10),  
+    axis.title = element_text(face = "bold", size = 8),              
+    legend.position = "none"                               
+  )
+
+#fig 1.D 
+vital_status_counts <- table(patient_metadata$Death, useNA = "no") 
+vital_status_data_plot <- data.frame(
+  Vital_Status = factor(names(vital_status_counts), levels = c("No", "Yes")), 
+  Frequency = as.numeric(vital_status_counts)
+)
+vital_status_data_plot <- vital_status_data_plot[-1, ]
+
+bar_colors <- c("No" = "#A7E1BD", "Yes" = "#FCE88A") 
+
+plot_d <- ggplot(vital_status_data_plot, aes(x = Vital_Status, y = Frequency, fill = Vital_Status)) +
+  geom_bar(stat = "identity", color = "black") + 
+  scale_fill_manual(values = bar_colors) + 
+  geom_text(aes(label = Frequency),vjust = -1, size = 4) + 
+  labs(
+    title = "Vital status",
+    x = "Death",
+    y = "Frequency (n)"
+  ) +
+  scale_y_continuous(limits = c(0, 180), breaks = seq(0, 150, by = 50)) + 
+  scale_x_discrete(labels = c("No", "Yes")) + 
+  theme_minimal() + 
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    axis.line.x.bottom = element_line(color = "black", linewidth = 1),
+    axis.line.y.left = element_line(color = "black", linewidth = 1),
+    axis.ticks.y = element_line(color = "black", linewidth = 1),
+    axis.ticks.length.y = unit(7, "pt"),
+    axis.title.x = element_text(hjust = 0.5, vjust=-1),
+    plot.title = element_text(hjust = 0.5)                              
+  ) +
+  guides(fill = "none")
+
+##
+
+combined_plot <- ggarrange(plot_a, table_with_title, plot_c, plot_d,
+                            labels = c("A", "B", "C", "D"),
+                            ncol = 2, nrow = 2,
+                            heights = c(1, 1.40)
+                            )
+combined_plot
+
+# 2
+
+cytokine_names <- c("IL-1β", "IL-6", "IL-10", "IFN-ɑ", "TNF-ɑ", "IL-8", "G-CSF",
+                    "IFN-γ", "CCL3", "CXCL10", "CCL2", "IL-38")
+
+cytokine_data_for_clustering <- cyto_data[, cytokine_names]
+cytokine_matrix <- as.matrix(sapply(cytokine_data_for_clustering, as.numeric))
+rownames(cytokine_matrix) <- cyto_data$ID 
+
+cytokine_matrix[cytokine_matrix == "NI"] <- 0
+colnames(cyto_data)[6:7] <- c("IFN-a", "TNF-a")
+df_cleaned <- cyto_data %>%
+  mutate_at(vars(`IL-1β`:`IL-38`), ~na_if(., "NI")) %>% 
+  mutate_at(vars(`IL-1β`:`IL-38`), as.numeric)
+cytokine_cols <- c("IL-1β", "IL-6", "IL-10", "IFN-a", "TNF-a","IL-8","G-CSF","IFN-γ","CCL3","CXCL10","CCL2","IL-38" )
+
+df_mean <- df_cleaned %>%
+  group_by(ID) %>%
+  summarise(
+    across(
+      .cols = all_of(cytokine_cols),  
+      .fns = ~mean(., na.rm = TRUE),
+      .names = "{.col}_mean"
+    )
+  )
+
+colnames(df_mean) <- gsub("_mean", "", colnames(df_mean))
+
+cytokine_matrix <- df_mean %>%
+  column_to_rownames("ID") %>%
+  t() %>%  
+  as.matrix()
+
+cytokine_matrix_pct <- apply(cytokine_matrix, 2, function(x) {
+  if(all(is.na(x)) || max(x, na.rm = TRUE) == 0) { 
+    return(x) 
+  } else { 
+    return(x/max(x, na.rm = TRUE) * 100) 
+  }
+})
+
+# hierarchical clustering
+hc_rows <- hclust(dist(cytokine_matrix_pct), method = "complete")  
+hc_cols <- hclust(dist(t(cytokine_matrix_pct)), method = "complete")
+
+clusters <- cutree(hc_cols, k = 3)
+annotation_col <- data.frame(
+  Cluster = factor(paste0("C", clusters))
+)
+rownames(annotation_col) <- colnames(cytokine_matrix)
+
+cluster_colors <- c("C1" = "#E67E78", "C2" = "#6BBF64", "C3" = "#6E9FD3")
+ann_colors <- list(Cluster = cluster_colors)
+orange_palette <- colorRampPalette(c("#FFF5EB", "#FDD9B5", "#E59148", "#8B4513"))(100)
+
+# heatmap
+pheatmap(cytokine_matrix_pct,
+         color = orange_palette,
+         cluster_rows = hc_rows,
+         cluster_cols = hc_cols,
+         annotation_col = annotation_col, 
+         annotation_colors = ann_colors,
+         main = "",
+         fontsize = 12,
+         fontsize_row = 10,
+         labels_col = rep("", ncol(cytokine_matrix)),  
+         display_numbers = FALSE,
+         border_color = NA,
+         legend = TRUE,
+         legend_breaks = c(0, 50, 100),
+         legend_labels = c("0.00", "50.0%", "100.0%")
+         )
+
+cytokine_matrix_pct <- t(apply(cytokine_matrix, 1, function(x) {
+  if(all(is.na(x)) || max(x, na.rm = TRUE) == 0) { 
+    return(x) 
+  } else { 
+    return(x/max(x, na.rm = TRUE) * 100) 
+  }
+}))
+
+col_fun <- colorRamp2(
+  c(0, 25, 50, 75, 100), 
+  c("#FFFFFF", "#FEE5D9", "#FCBBA1", "#FC9272", "#A50F15")
+)
+
+clusters <- cutree(hc_cols, k = 3)
+
+cluster_names <- c("C1" = "High IL-6/IL-8", 
+                   "C2" = "Moderate Response", 
+                   "C3" = "Low Expression")
+cluster_ids <- factor(paste0("C", clusters))
+cluster_labels <- cluster_names[as.character(cluster_ids)]
+
+column_ha <- HeatmapAnnotation(
+  Cluster = cluster_ids,
+  Cluster_Name = anno_text(
+    cluster_labels,
+    rot = 0,
+    gp = gpar(fontsize = 8),
+    location = 0.5
+  ),
+  col = list(Cluster = c("C1" = "#E67E78", "C2" = "#6BBF64", "C3" = "#6E9FD3")),
+  annotation_height = c(10, 25),
+  show_legend = TRUE,
+  show_annotation_name = TRUE
+)
+
+cytokine_groups <- list(
+  "Pro-inflammatory" = c("IL-1β", "IL-6", "TNF"),
+  "Chemokines" = c("CXCL10", "IL-8", "CCL2", "CCL3"),
+  "Interferons" = c("IFN-alpha", "IFN-gamma"),
+  "Anti-inflammatory" = c("IL-10"),
+  "Other" = c("IL-38", "G-CSF")
+)
+
+cytokine_group_assignments <- rep("Other", nrow(cytokine_matrix_pct))
+names(cytokine_group_assignments) <- rownames(cytokine_matrix_pct)
+
+for(group_name in names(cytokine_groups)) {
+  for(cytokine in cytokine_groups[[group_name]]) {
+    idx <- which(rownames(cytokine_matrix_pct) == cytokine)
+    if(length(idx) > 0) {
+      cytokine_group_assignments[idx] <- group_name
+    }
+  }
+}
+
+row_ha <- rowAnnotation(
+  Group = factor(cytokine_group_assignments),
+  col = list(Group = c(
+    "Pro-inflammatory" = "#E41A1C",
+    "Chemokines" = "#377EB8", 
+    "Interferons" = "#4DAF4A",
+    "Anti-inflammatory" = "#984EA3",
+    "Other" = "#FF7F00"
+  )),
+  show_legend = TRUE
+)
+
+cytokine_matrix_pct <- as.matrix(cytokine_matrix_pct)
+
+patient_metadata$Death <- as.character(patient_metadata$Death)
+patient_metadata[patient_metadata[,"Death"] == "3","Death"] <- "No"
+patient_metadata$Gender <- as.character(patient_metadata$Gender)
+patient_metadata[patient_metadata[,"Gender"] == "72", "Gender"] <- "M"
+
+patient_metadata <- patient_metadata[match(colnames(cytokine_matrix_pct), patient_metadata$ID),]
+
+annotation_df <- data.frame(
+  Cluster = factor(paste0("C", clusters)),
+  Death = factor(patient_metadata$Death), 
+  Gender = factor(patient_metadata$Gender)
+)
+rownames(annotation_df) <- colnames(cytokine_matrix_pct)
+
+ann_colors <- list(
+  Cluster = c("C1" = "#E67E78", "C2" = "#6BBF64", "C3" = "#6E9FD3"),
+  Death = c("Yes" = "black", "No" = "white"), 
+  Gender = c("M" = "#4575B4", "F" = "#D73027")  
+)
+
+column_ha <- HeatmapAnnotation(
+  df = annotation_df,
+  col = ann_colors,
+  annotation_height = c(unit(4, "mm"), unit(4, "mm"), unit(4, "mm")),
+  show_legend = TRUE,
+  show_annotation_name = TRUE,
+  annotation_name_gp = gpar(fontsize = 8),
+  annotation_legend_param = list(
+    Cluster = list(
+      title_gp = gpar(fontsize = 8),
+      labels_gp = gpar(fontsize = 7)
+    ),
+    Death = list(
+      title_gp = gpar(fontsize = 8),
+      labels_gp = gpar(fontsize = 7)
+    ),
+    Gender = list(
+      title_gp = gpar(fontsize = 8),
+      labels_gp = gpar(fontsize = 7)
+    )
+  )
+)
+
+ht <- Heatmap(cytokine_matrix_pct,
+        name = "Relative\nexpression (%)",
+        col = col_fun,
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        top_annotation = column_ha,
+        right_annotation = row_ha,
+        column_split = cluster_ids,
+        column_labels = rep("", ncol(cytokine_matrix_pct)),
+        row_labels = rownames(cytokine_matrix_pct),
+        row_names_gp = gpar(fontface = "bold", fontsize = 7),
+        row_split = cytokine_group_assignments,
+        row_title_gp = gpar(fontsize = 9, fontface = "bold"),
+        border = TRUE,
+        row_gap = unit(1, "mm"),
+        column_gap = unit(1, "mm"),
+        row_dend_width = unit(0.5, "cm"),
+        column_dend_height = unit(0.5, "cm"),
+        row_title_rot = 0,
+        width = unit(ncol(cytokine_matrix_pct) * 0.03, "cm"),
+        height = unit(nrow(cytokine_matrix_pct) * 0.3, "cm"),
+        heatmap_legend_param = list(
+          title = "Relative Expression",
+          at = c(0, 25, 50, 75, 100),
+          labels = c("0%", "25%", "50%", "75%", "100%"),
+          legend_height = unit(3, "cm"),
+          title_position = "leftcenter-rot",
+          title_gp = gpar(fontsize = 8),
+          labels_gp = gpar(fontsize = 7)
+        )
+)
+
+# heatmap with new annotations
+draw(ht, 
+     heatmap_legend_side = "right",
+     column_title = "Cytokine Expression Profiles Across Patient Cohorts",
+     column_title_gp = gpar(fontsize = 10, fontface = "bold"),
+     row_title = "Cytokines",
+     padding = unit(c(1, 1, 1, 1), "mm"),
+     merge_legends = TRUE)
+
+```
+
+# session info {.unnumbered}
+
+```{r, results='asis',  echo=FALSE, message=FALSE }
+sessionInfo()
+```
